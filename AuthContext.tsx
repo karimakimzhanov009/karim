@@ -17,7 +17,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         const init = async () => {
-            await seedAdmin();
+            try {
+                await seedAdmin();
+            } catch (err) {
+                console.error('Ошибка инициализации (возможно, не созданы таблицы в Supabase):', err);
+            }
             // Restore session
             const saved = localStorage.getItem('ithub_session');
             if (saved) {
