@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AEC — Экзамен</title>
+    <link rel="icon" href="/image copy.png" />
+    <!-- Подключаем шрифт Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-disabled: #93c5fd;
+            --primary-hover: #1d4ed8;
+            --bg-page: #f3f4f6;
+            --bg-surface: #ffffff;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --border-color: #d1d5db;
+            --danger: #ef4444;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* 1. Стартовый экран */
+        .start-screen {
+            background-color: var(--bg-surface);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05), 0 4px 6px rgba(0, 0, 0, 0.02);
+            width: 100%;
+            max-width: 480px;
+            box-sizing: border-box;
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 24px;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 15px;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            font-family: inherit;
+        }
+
+        .form-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .rules-block {
+            background-color: var(--bg-page);
+            padding: 20px;
+            border-radius: 8px;
+            margin: 24px 0;
+        }
+
+        .rules-block h3 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .rules-list {
+            margin: 0;
+            padding-left: 20px;
+            color: var(--text-muted);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .rules-list li {
+            margin-bottom: 6px;
+        }
+
+        .rules-list li:last-child {
+            margin-bottom: 0;
+        }
+
+        .rules-list strong {
+            color: var(--text-main);
+        }
+
+        .checkbox-container {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 28px;
+            cursor: pointer;
+        }
+
+        .checkbox-container input[type="checkbox"] {
+            margin-top: 3px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: var(--primary);
+            flex-shrink: 0;
+        }
+
+        .checkbox-label {
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            cursor: pointer;
+        }
+
+        .btn {
+            width: 100%;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-family: inherit;
+        }
+
+        .btn:hover:not(:disabled) {
+            background-color: var(--primary-hover);
+        }
+
+        .btn:disabled {
+            background-color: var(--primary-disabled);
+            cursor: not-allowed;
+        }
+
+        /* 2. Экран экзамена (заглушка) */
+        .exam-screen {
+            display: none;
+            text-align: center;
+        }
+
+        .exam-screen h1 {
+            font-size: 32px;
+            margin-bottom: 16px;
+        }
+
+        /* 3. Режим камеры (Picture-in-Picture) */
+        .camera-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 260px;
+            height: 180px;
+            background-color: #000;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2), 0 4px 10px rgba(0, 0, 0, 0.1);
+            z-index: 9999;
+            display: none;
+            overflow: hidden;
+            border: 2px solid var(--bg-surface);
+        }
+
+        .camera-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            /* Зеркальное отображение как в зуме/скайпе */
+            transform: scaleX(-1);
+        }
+
+        .rec-indicator {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            font-family: system-ui, sans-serif;
+            z-index: 2;
+        }
+
+        .rec-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--danger);
+            border-radius: 50%;
+            animation: blink 1.5s infinite alternate;
+        }
+
+        @keyframes blink {
+            0% {
+                opacity: 1;
+                box-shadow: 0 0 4px var(--danger);
+            }
+
+            100% {
+                opacity: 0.3;
+                box-shadow: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Стартовый экран (Лицензионное соглашение) -->
+    <div class="start-screen" id="start-screen">
+        <h2>Регистрация на собеседование</h2>
+
+        <div class="form-group">
+            <label for="student-name">Имя студента</label>
+            <input type="text" id="student-name" class="form-input" placeholder="Иванов Иван Иванович"
+                autocomplete="off">
+        </div>
+
+        <div class="form-group">
+            <label for="phone-number">Номер телефона</label>
+            <input type="tel" id="phone-number" class="form-input" placeholder="+7 (999) 000-00-00" autocomplete="off">
+        </div>
+
+        <div class="rules-block">
+            <h3>Правила прохождения:</h3>
+            <ul class="rules-list">
+                <li>Время на выполнение: <strong>60 минут</strong>.</li>
+                <li>Экзамен проходит в <strong>полноэкранном режиме</strong>.</li>
+                <li><strong>Запрещено</strong> копировать текст или переключаться на другие вкладки/окна.</li>
+            </ul>
+        </div>
+
+        <label class="checkbox-container">
+            <input type="checkbox" id="agreement-checkbox">
+            <span class="checkbox-label">
+                Я подтверждаю согласие на обработку персональных данных и фиксацию видео во время собеседования
+            </span>
+        </label>
+
+        <button class="btn" id="start-btn" disabled>Начать</button>
+    </div>
+
+    <!-- Заглушка интерфейса экзамена -->
+    <div class="exam-screen" id="exam-screen">
+        <h1>Экзамен запущен</h1>
+        <p>Время пошло. Пожалуйста, не закрывайте вкладку и не выходите из полноэкранного режима.</p>
+    </div>
+
+    <!-- Плавающее окно камеры -->
+    <div class="camera-container" id="camera-container">
+        <div class="rec-indicator">
+            <div class="rec-dot"></div>
+            REC
+        </div>
+        <video class="camera-video" id="camera-video" autoplay playsinline muted></video>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const startScreen = document.getElementById('start-screen');
+            const examScreen = document.getElementById('exam-screen');
+            const startBtn = document.getElementById('start-btn');
+            const agreementCheckbox = document.getElementById('agreement-checkbox');
+            const cameraContainer = document.getElementById('camera-container');
+            const cameraVideo = document.getElementById('camera-video');
+
+            let isExamActive = false;
+
+            // 1. Логика разблокировки кнопки "Начать"
+            agreementCheckbox.addEventListener('change', (e) => {
+                startBtn.disabled = !e.target.checked;
+            });
+
+            // 2. Обработка старта экзамена
+            startBtn.addEventListener('click', async () => {
+                // Запрос к камере
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                        audio: true  // По тз фиксация видео, обычно просят и аудио. Если аудио не нужно, можно убрать.
+                    });
+
+                    cameraVideo.srcObject = stream;
+
+                    // Активация полноэкранного режима
+                    try {
+                        if (document.documentElement.requestFullscreen) {
+                            await document.documentElement.requestFullscreen();
+                        } else if (document.documentElement.webkitRequestFullscreen) {
+                            await document.documentElement.webkitRequestFullscreen();
+                        }
+                    } catch (fsError) {
+                        console.warn('Не удалось автоматически перейти в полноэкранный режим:', fsError);
+                    }
+
+                    // Переключение интерфейса
+                    isExamActive = true;
+                    startScreen.style.display = 'none';
+                    examScreen.style.display = 'block';
+                    cameraContainer.style.display = 'block';
+
+                } catch (err) {
+                    // Обработка отказа в доступе к камере
+                    alert('Для начала экзамена необходимо предоставить доступ к камере. Пожалуйста, разрешите доступ во всплывающем окне браузера.');
+                    console.error('Ошибка доступа к камере:', err);
+                }
+            });
+
+            // 3. Отслеживание выхода из полноэкранного режима
+            document.addEventListener('fullscreenchange', () => {
+                if (!document.fullscreenElement && isExamActive) {
+                    alert('ВНИМАНИЕ! Вы покинули полноэкранный режим. Это может быть расценено как нарушение правил проведения экзамена!');
+                }
+            });
+
+            // Обработка для Safari (webkitfullscreenchange)
+            document.addEventListener('webkitfullscreenchange', () => {
+                if (!document.webkitFullscreenElement && isExamActive) {
+                    alert('ВНИМАНИЕ! Вы покинули полноэкранный режим. Это может быть расценено как нарушение правил проведения экзамена!');
+                }
+            });
+
+            // 4. Запрет копирования и выделения текста (Anti-cheat)
+            document.addEventListener('copy', (e) => {
+                if (isExamActive) {
+                    e.preventDefault();
+                    alert('Копирование текста во время экзамена запрещено!');
+                }
+            });
+
+            document.addEventListener('contextmenu', (e) => {
+                if (isExamActive) {
+                    e.preventDefault();
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
