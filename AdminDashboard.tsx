@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { User, Quiz, StudentResult } from './types';
 import { getTeachers, addUser, deleteUser, getUsers, getQuizzes, getResults, getUserById, deleteQuiz } from './db';
-import { LogOut, UserPlus, Trash2, Users, BookOpen, BarChart3, Shield, X, GraduationCap, Clock, Award } from 'lucide-react';
+import { LogOut, UserPlus, Trash2, Users, BookOpen, BarChart3, Shield, X, GraduationCap } from 'lucide-react';
+import { Role } from './types';
 
 type AdminTab = 'teachers' | 'students' | 'exams';
 
@@ -17,13 +18,18 @@ const AdminDashboard: React.FC = () => {
     const [form, setForm] = useState({ username: '', password: '', fullName: '', role: 'teacher' as Role });
     const [error, setError] = useState<string | null>(null);
     const [stats, setStats] = useState({ teachers: 0, students: 0, quizzes: 0, avgScore: 0 });
+    const [userMap, setUserMap] = useState<Record<string, User>>({});
 
-    const refresh = () => {
-        const users = getUsers();
-        const quizzes = getQuizzes();
-        const results = getResults();
+    const refresh = async () => {
+        const users = await getUsers();
+        const quizzes = await getQuizzes();
+        const results = await getResults();
         const teachersList = users.filter(u => u.role === 'teacher' || u.role === 'deputy');
         const studentsList = users.filter(u => u.role === 'student');
+
+        const map: Record<string, User> = {};
+        users.forEach(u => { map[u.id] = u; });
+        setUserMap(map);
 
         setTeachers(teachersList);
         setAllStudents(studentsList);
@@ -43,7 +49,7 @@ const AdminDashboard: React.FC = () => {
 
     useEffect(() => { refresh(); }, []);
 
-    const handleAddTeacher = (e: React.FormEvent) => {
+    const handleAddTeacher = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
         if (!form.username.trim() || !form.password.trim() || !form.fullName.trim()) {
@@ -51,7 +57,7 @@ const AdminDashboard: React.FC = () => {
             return;
         }
         try {
-            addUser({
+            await addUser({
                 id: crypto.randomUUID(),
                 username: form.username.trim(),
                 password: form.password,
@@ -68,31 +74,30 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
-    const handleDeleteTeacher = (id: string) => {
+    const handleDeleteTeacher = async (id: string) => {
         if (confirm('Удалить учителя? Все его ученики и экзамены тоже будут удалены.')) {
-            deleteUser(id);
+            await deleteUser(id);
             refresh();
         }
     };
 
-    const handleDeleteStudent = (id: string) => {
+    const handleDeleteStudent = async (id: string) => {
         if (confirm('Удалить ученика?')) {
-            deleteUser(id);
+            await deleteUser(id);
             refresh();
         }
     };
 
-    const handleDeleteQuiz = (id: string) => {
+    const handleDeleteQuiz = async (id: string) => {
         if (confirm('Удалить экзамен и все его результаты?')) {
-            deleteQuiz(id);
+            await deleteQuiz(id);
             refresh();
         }
     };
 
     const getTeacherName = (id?: string) => {
         if (!id) return '—';
-        const t = getUserById(id);
-        return t ? t.fullName : '—';
+        return userMap[id]?.fullName || '—';
     };
 
     const getResultsCount = (quizId: string) => allResults.filter(r => r.quizId === quizId).length;
@@ -300,9 +305,9 @@ const AdminDashboard: React.FC = () => {
                         <form onSubmit={handleAddTeacher} className="modal-body">
                             <div className="form-group">
                                 <label className="form-label">Роль</label>
-                                <select 
-                                    className="form-input" 
-                                    value={form.role} 
+                                <select
+                                    className="form-input"
+                                    value={form.role}
                                     onChange={e => setForm({ ...form, role: e.target.value as Role })}
                                 >
                                     <option value="teacher">Учитель</option>

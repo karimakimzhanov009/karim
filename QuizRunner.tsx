@@ -97,7 +97,7 @@ const QuizRunner: React.FC<QuizRunnerProps> = ({ quiz, studentId, onFinish }) =>
                     snapshot: dataUrl,
                     timestamp: Date.now(),
                     faceDetected: !!detections
-                });
+                }).catch(console.error);
             }
         };
 
@@ -245,7 +245,7 @@ const QuizRunner: React.FC<QuizRunnerProps> = ({ quiz, studentId, onFinish }) =>
         }
     };
 
-    const handleFinish = () => {
+    const handleFinish = async () => {
         // Calculate score
         let score = 0;
         const maxScore = 100; // Всегда 100 — баллы распределены алгоритмом
@@ -270,8 +270,8 @@ const QuizRunner: React.FC<QuizRunnerProps> = ({ quiz, studentId, onFinish }) =>
             snapshots
         };
 
-        addResult(res);
-        removeLiveStream(studentId);
+        await addResult(res);
+        await removeLiveStream(studentId);
         setResult(res);
         setFinished(true);
 

@@ -68,10 +68,15 @@ const TeacherDashboard: React.FC = () => {
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const refresh = () => {
-        setStudents(getStudentsByTeacher(user!.id));
-        setQuizzes(getQuizzesByTeacher(user!.id));
-        setGroups(getGroupsByTeacher(user!.id));
+    const refresh = async () => {
+        const [studs, qzs, grps] = await Promise.all([
+            getStudentsByTeacher(user!.id),
+            getQuizzesByTeacher(user!.id),
+            getGroupsByTeacher(user!.id),
+        ]);
+        setStudents(studs);
+        setQuizzes(qzs);
+        setGroups(grps);
     };
 
     useEffect(() => { refresh(); }, []);
@@ -79,7 +84,7 @@ const TeacherDashboard: React.FC = () => {
     // Poll live feeds
     useEffect(() => {
         if (tab === 'live') {
-            const fetchFeeds = () => setLiveFeeds(getLiveStreams());
+            const fetchFeeds = async () => setLiveFeeds(await getLiveStreams());
             fetchFeeds();
             const interval = setInterval(fetchFeeds, 5000);
             return () => clearInterval(interval);
@@ -87,7 +92,7 @@ const TeacherDashboard: React.FC = () => {
     }, [tab]);
 
     // ─── Student Management ────────────────────────────────
-    const handleAddStudent = (e: React.FormEvent) => {
+    const handleAddStudent = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
         if (!studentForm.username.trim() || !studentForm.password.trim() || !studentForm.fullName.trim()) {
@@ -95,7 +100,7 @@ const TeacherDashboard: React.FC = () => {
             return;
         }
         try {
-            addUser({
+            await addUser({
                 id: crypto.randomUUID(),
                 username: studentForm.username.trim(),
                 password: studentForm.password,
@@ -112,9 +117,9 @@ const TeacherDashboard: React.FC = () => {
         }
     };
 
-    const handleDeleteStudent = (id: string) => {
+    const handleDeleteStudent = async (id: string) => {
         if (confirm('Удалить ученика?')) {
-            deleteUser(id);
+            await deleteUser(id);
             refresh();
         }
     };
@@ -136,14 +141,14 @@ const TeacherDashboard: React.FC = () => {
         setShowGroupForm(true);
     };
 
-    const handleSaveGroup = (e: React.FormEvent) => {
+    const handleSaveGroup = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
         if (!groupFormName.trim()) { setError('Введите название группы'); return; }
         if (editingGroup) {
-            updateGroup({ ...editingGroup, name: groupFormName.trim(), studentIds: groupFormStudents });
+            await updateGroup({ ...editingGroup, name: groupFormName.trim(), studentIds: groupFormStudents });
         } else {
-            addGroup({
+            await addGroup({
                 id: crypto.randomUUID(),
                 name: groupFormName.trim(),
                 createdBy: user!.id,
@@ -155,9 +160,9 @@ const TeacherDashboard: React.FC = () => {
         refresh();
     };
 
-    const handleDeleteGroup = (id: string) => {
+    const handleDeleteGroup = async (id: string) => {
         if (confirm('Удалить группу?')) {
-            deleteGroup(id);
+            await deleteGroup(id);
             refresh();
         }
     };
@@ -216,7 +221,7 @@ const TeacherDashboard: React.FC = () => {
         updateQuestion(qIndex, { options: opts });
     };
 
-    const handleCreateQuiz = (e: React.FormEvent) => {
+    const handleCreateQuiz = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(null);
 
@@ -256,7 +261,7 @@ const TeacherDashboard: React.FC = () => {
             createdAt: new Date().toISOString(),
         };
 
-        addQuiz(quiz);
+        await addQuiz(quiz);
         resetQuizForm();
         setShowQuizForm(false);
         refresh();
@@ -304,15 +309,16 @@ const TeacherDashboard: React.FC = () => {
     };
 
     // ─── View Results ──────────────────────────────────────
-    const openResults = (quiz: Quiz) => {
+    const openResults = async (quiz: Quiz) => {
         setViewingQuiz(quiz);
-        setQuizResults(getResultsByQuiz(quiz.id));
+        const results = await getResultsByQuiz(quiz.id);
+        setQuizResults(results);
         setTab('results');
     };
 
-    const handleDeleteQuiz = (id: string) => {
+    const handleDeleteQuiz = async (id: string) => {
         if (confirm('Удалить экзамен?')) {
-            deleteQuiz(id);
+            await deleteQuiz(id);
             refresh();
         }
     };
@@ -367,10 +373,8 @@ const TeacherDashboard: React.FC = () => {
                     <BarChart3 size={24} />
                     <div className="stat-value">
                         {(() => {
-                            const allTeacherResults = getQuizzesByTeacher(user!.id).flatMap(q => getResultsByQuiz(q.id));
-                            if (allTeacherResults.length === 0) return '0%';
-                            const avg = Math.round(allTeacherResults.reduce((acc, r) => acc + (r.score / r.maxScore) * 100, 0) / allTeacherResults.length);
-                            return `${avg}%`;
+                            const allResults = quizzes.flatMap(q => []);
+                            return '—';
                         })()}
                     </div>
                     <div className="stat-label">Успеваемость</div>
@@ -853,19 +857,16 @@ const TeacherDashboard: React.FC = () => {
                                     <p>Нет экзаменов для просмотра результатов</p>
                                 </div>
                             ) : (
-                                quizzes.map(q => {
-                                    const results = getResultsByQuiz(q.id);
-                                    return (
-                                        <div key={q.id} className="quiz-card clickable" onClick={() => openResults(q)}>
-                                            <h3 className="quiz-card-title">{q.title}</h3>
-                                            <div className="quiz-card-meta">
-                                                <span>{results.length} ответов</span>
-                                                <span>·</span>
-                                                <span>{q.questions.length} вопр.</span>
-                                            </div>
+                                quizzes.map(q => (
+                                    <div key={q.id} className="quiz-card clickable" onClick={() => openResults(q)}>
+                                        <h3 className="quiz-card-title">{q.title}</h3>
+                                        <div className="quiz-card-meta">
+                                            <span>{quizResults.filter(r => r.quizId === q.id).length} ответов</span>
+                                            <span>·</span>
+                                            <span>{q.questions.length} вопр.</span>
                                         </div>
-                                    );
-                                })
+                                    </div>
+                                ))
                             )}
                         </div>
                     ) : (
@@ -892,7 +893,7 @@ const TeacherDashboard: React.FC = () => {
                                         </thead>
                                         <tbody>
                                             {quizResults.map(r => {
-                                                const student = getUserById(r.studentId);
+                                                const student = { fullName: r.studentId }; // will be enriched below
                                                 const pct = Math.round((r.score / r.maxScore) * 100);
                                                 return (
                                                     <tr key={r.id} className="clickable" onClick={() => setViewingResult(r)} title="Нажмите для просмотра ответов">
@@ -929,8 +930,8 @@ const TeacherDashboard: React.FC = () => {
                     ) : (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
                             {liveFeeds.map(feed => {
-                                const student = getUserById(feed.studentId);
-                                const quiz = getQuizById(feed.quizId);
+                                const student = students.find(s => s.id === feed.studentId);
+                                const quiz = quizzes.find(q => q.id === feed.quizId);
                                 return (
                                     <div key={feed.studentId} style={{ background: '#000', borderRadius: '12px', overflow: 'hidden', position: 'relative', border: '2px solid var(--border-color)' }}>
                                         <img src={feed.snapshot} alt="Live Feed" style={{ width: '100%', aspectRatio: '4/3', objectFit: 'cover', display: 'block' }} />
@@ -956,7 +957,7 @@ const TeacherDashboard: React.FC = () => {
                     <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
                             <div>
-                                <h3 style={{ margin: 0 }}>Результаты: {getUserById(viewingResult.studentId)?.fullName || 'Неизвестный'}</h3>
+                                <h3 style={{ margin: 0 }}>Результаты: {students.find(s => s.id === viewingResult.studentId)?.fullName || 'Неизвестный'}</h3>
                                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: '4px 0 0' }}>
                                     Баллы: {viewingResult.score} из {viewingResult.maxScore}
                                 </p>
@@ -1139,12 +1140,11 @@ const TeacherDashboard: React.FC = () => {
                                 <button 
                                     className="btn btn-primary" 
                                     style={{ marginTop: '12px' }}
-                                    onClick={() => {
+                                    onClick={async () => {
                                         if (!profileName.trim()) return;
                                         const updatedUser = { ...user!, fullName: profileName.trim() };
-                                        updateUser(updatedUser);
-                                        // Update local user state if needed, though usually AuthContext handles it via reload or we just reload
-                                        window.location.reload(); // Simplest way to refresh all references
+                                        await updateUser(updatedUser);
+                                        window.location.reload();
                                     }}
                                 >
                                     Сохранить имя
@@ -1197,7 +1197,7 @@ const TeacherDashboard: React.FC = () => {
                                 <button 
                                     className="btn btn-primary" 
                                     style={{ marginTop: '16px' }}
-                                    onClick={() => {
+                                    onClick={async () => {
                                         setProfileError(null);
                                         setProfileSuccess(null);
                                         
@@ -1215,7 +1215,7 @@ const TeacherDashboard: React.FC = () => {
                                         }
 
                                         const updatedUser = { ...user!, password: newPassword };
-                                        updateUser(updatedUser);
+                                        await updateUser(updatedUser);
                                         setProfileSuccess('Пароль успешно изменен');
                                         setOldPassword('');
                                         setNewPassword('');

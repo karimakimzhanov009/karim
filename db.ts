@@ -1,222 +1,342 @@
+import { supabase } from './supabase';
 import { User, Quiz, StudentResult, Group } from './types';
 
-const KEYS = {
-    users: 'ithub_users',
-    quizzes: 'ithub_quizzes',
-    results: 'ithub_results',
-    live_streams: 'ithub_live_streams',
-    groups: 'ithub_groups',
-};
+// ─── Row mappers ──────────────────────────────────────────
 
-// ─── Helpers ─────────────────────────────────────────────
-
-function read<T>(key: string): T[] {
-    try {
-        const raw = localStorage.getItem(key);
-        return raw ? JSON.parse(raw) : [];
-    } catch {
-        return [];
-    }
+function mapUser(row: any): User {
+    return {
+        id: row.id,
+        username: row.username,
+        password: row.password,
+        role: row.role,
+        fullName: row.full_name,
+        createdBy: row.created_by ?? undefined,
+        createdAt: row.created_at,
+    };
 }
 
-function write<T>(key: string, data: T[]): void {
-    localStorage.setItem(key, JSON.stringify(data));
+function mapGroup(row: any): Group {
+    return {
+        id: row.id,
+        name: row.name,
+        createdBy: row.created_by,
+        studentIds: row.student_ids ?? [],
+        createdAt: row.created_at,
+    };
+}
+
+function mapQuiz(row: any): Quiz {
+    return {
+        id: row.id,
+        title: row.title,
+        description: row.description ?? undefined,
+        createdBy: row.created_by,
+        assignedTo: row.assigned_to ?? [],
+        assignedGroups: row.assigned_groups ?? [],
+        questions: row.questions ?? [],
+        timeLimitMinutes: row.time_limit_minutes ?? undefined,
+        scheduledAt: row.scheduled_at ?? undefined,
+        createdAt: row.created_at,
+    };
+}
+
+function mapResult(row: any): StudentResult {
+    return {
+        id: row.id,
+        studentId: row.student_id,
+        quizId: row.quiz_id,
+        answers: row.answers ?? {},
+        score: row.score,
+        maxScore: row.max_score,
+        completedAt: row.completed_at,
+        snapshots: row.snapshots ?? [],
+    };
 }
 
 // ─── Seed default admin ──────────────────────────────────
 
-export function seedAdmin(): void {
-    const users = read<User>(KEYS.users);
-    if (!users.find(u => u.role === 'admin')) {
-        users.push({
+export async function seedAdmin(): Promise<void> {
+    const { data } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'admin')
+        .limit(1)
+        .single();
+
+    if (!data) {
+        await supabase.from('users').insert({
             id: 'admin-001',
             username: 'admin',
             password: 'admin123',
             role: 'admin',
-            fullName: 'Администратор',
-            createdAt: new Date().toISOString(),
+            full_name: 'Администратор',
+            created_by: null,
+            created_at: new Date().toISOString(),
         });
-        write(KEYS.users, users);
     }
 }
 
 // ─── Users ───────────────────────────────────────────────
 
-export function getUsers(): User[] {
-    return read<User>(KEYS.users);
+export async function getUsers(): Promise<User[]> {
+    const { data, error } = await supabase.from('users').select('*');
+    if (error) { console.error(error); return []; }
+    return (data ?? []).map(mapUser);
 }
 
-export function getUserById(id: string): User | undefined {
-    return getUsers().find(u => u.id === id);
+export async function getUserById(id: string): Promise<User | undefined> {
+    const { data } = await supabase.from('users').select('*').eq('id', id).single();
+    return data ? mapUser(data) : undefined;
 }
 
-export function getUserByUsername(username: string): User | undefined {
-    return getUsers().find(u => u.username === username);
+export async function getUserByUsername(username: string): Promise<User | undefined> {
+    const { data } = await supabase.from('users').select('*').eq('username', username).single();
+    return data ? mapUser(data) : undefined;
 }
 
-export function addUser(user: User): void {
-    const users = getUsers();
-    if (users.find(u => u.username === user.username)) {
-        throw new Error('Пользователь с таким логином уже существует');
-    }
-    users.push(user);
-    write(KEYS.users, users);
-}
+export async function addUser(user: User): Promise<void> {
+    const { data: existing } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', user.username)
+        .single();
+    if (existing) throw new Error('Пользователь с таким логином уже существует');
 
-export function updateUser(user: User): void {
-    const users = getUsers().map(u => u.id === user.id ? user : u);
-    write(KEYS.users, users);
-}
-
-export function deleteUser(id: string): void {
-    const allUsers = getUsers();
-
-    // Find all users created by this user (e.g. students created by this teacher)
-    const usersToDelete = new Set([id]);
-    allUsers.forEach(u => {
-        if (u.createdBy === id) {
-            usersToDelete.add(u.id);
-        }
+    const { error } = await supabase.from('users').insert({
+        id: user.id,
+        username: user.username,
+        password: user.password,
+        role: user.role,
+        full_name: user.fullName,
+        created_by: user.createdBy ?? null,
+        created_at: user.createdAt,
     });
-
-    const activeUsers = allUsers.filter(u => !usersToDelete.has(u.id));
-    write(KEYS.users, activeUsers);
-
-    // Also remove related quizzes created by this user
-    const quizzes = getQuizzes().filter(q => q.createdBy !== id);
-    write(KEYS.quizzes, quizzes);
-
-    // Remove results where the student was deleted
-    const results = getResults().filter(r => !usersToDelete.has(r.studentId));
-    write(KEYS.results, results);
-
-    // Remove deleted students from all groups
-    const groups = getGroups().map(g => ({
-        ...g,
-        studentIds: g.studentIds.filter(sid => !usersToDelete.has(sid)),
-    }));
-    write(KEYS.groups, groups);
+    if (error) throw new Error(error.message);
 }
 
-export function getTeachers(): User[] {
-    return getUsers().filter(u => u.role === 'teacher');
+export async function updateUser(user: User): Promise<void> {
+    await supabase.from('users').update({
+        username: user.username,
+        password: user.password,
+        role: user.role,
+        full_name: user.fullName,
+        created_by: user.createdBy ?? null,
+    }).eq('id', user.id);
+}
+
+export async function deleteUser(id: string): Promise<void> {
+    // Find users created by this user
+    const { data: children } = await supabase
+        .from('users')
+        .select('id')
+        .eq('created_by', id);
+
+    const idsToDelete = [id, ...(children ?? []).map((u: any) => u.id)];
+
+    await supabase.from('users').delete().in('id', idsToDelete);
+    await supabase.from('quizzes').delete().eq('created_by', id);
+    await supabase.from('student_results').delete().in('student_id', idsToDelete);
+
+    // Remove deleted students from groups
+    const { data: groups } = await supabase.from('groups').select('*');
+    for (const g of groups ?? []) {
+        const filtered = (g.student_ids ?? []).filter((sid: string) => !idsToDelete.includes(sid));
+        await supabase.from('groups').update({ student_ids: filtered }).eq('id', g.id);
+    }
+}
+
+export async function getTeachers(): Promise<User[]> {
+    const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('role', 'teacher');
+    if (error) return [];
+    return (data ?? []).map(mapUser);
 }
 
 // ─── Groups ──────────────────────────────────────────────
 
-export function getGroups(): Group[] {
-    return read<Group>(KEYS.groups);
+export async function getGroups(): Promise<Group[]> {
+    const { data, error } = await supabase.from('groups').select('*');
+    if (error) return [];
+    return (data ?? []).map(mapGroup);
 }
 
-export function getGroupsByTeacher(teacherId: string): Group[] {
-    return getGroups().filter(g => g.createdBy === teacherId);
+export async function getGroupsByTeacher(teacherId: string): Promise<Group[]> {
+    const { data } = await supabase.from('groups').select('*').eq('created_by', teacherId);
+    return (data ?? []).map(mapGroup);
 }
 
-export function addGroup(group: Group): void {
-    const groups = getGroups();
-    groups.push(group);
-    write(KEYS.groups, groups);
+export async function addGroup(group: Group): Promise<void> {
+    await supabase.from('groups').insert({
+        id: group.id,
+        name: group.name,
+        created_by: group.createdBy,
+        student_ids: group.studentIds,
+        created_at: group.createdAt,
+    });
 }
 
-export function updateGroup(group: Group): void {
-    const groups = getGroups().map(g => g.id === group.id ? group : g);
-    write(KEYS.groups, groups);
+export async function updateGroup(group: Group): Promise<void> {
+    await supabase.from('groups').update({
+        name: group.name,
+        student_ids: group.studentIds,
+    }).eq('id', group.id);
 }
 
-export function deleteGroup(id: string): void {
-    const groups = getGroups().filter(g => g.id !== id);
-    write(KEYS.groups, groups);
+export async function deleteGroup(id: string): Promise<void> {
+    await supabase.from('groups').delete().eq('id', id);
 }
 
-export function getStudentsByTeacher(teacherId: string): User[] {
-    return getUsers().filter(u => u.role === 'student' && u.createdBy === teacherId);
+export async function getStudentsByTeacher(teacherId: string): Promise<User[]> {
+    const { data } = await supabase
+        .from('users')
+        .select('*')
+        .eq('role', 'student')
+        .eq('created_by', teacherId);
+    return (data ?? []).map(mapUser);
 }
 
 // ─── Quizzes ─────────────────────────────────────────────
 
-export function getQuizzes(): Quiz[] {
-    return read<Quiz>(KEYS.quizzes);
+export async function getQuizzes(): Promise<Quiz[]> {
+    const { data, error } = await supabase.from('quizzes').select('*');
+    if (error) return [];
+    return (data ?? []).map(mapQuiz);
 }
 
-export function getQuizById(id: string): Quiz | undefined {
-    return getQuizzes().find(q => q.id === id);
+export async function getQuizById(id: string): Promise<Quiz | undefined> {
+    const { data } = await supabase.from('quizzes').select('*').eq('id', id).single();
+    return data ? mapQuiz(data) : undefined;
 }
 
-export function getQuizzesByTeacher(teacherId: string): Quiz[] {
-    return getQuizzes().filter(q => q.createdBy === teacherId);
+export async function getQuizzesByTeacher(teacherId: string): Promise<Quiz[]> {
+    const { data } = await supabase.from('quizzes').select('*').eq('created_by', teacherId);
+    return (data ?? []).map(mapQuiz);
 }
 
-export function getQuizzesForStudent(studentId: string): Quiz[] {
-    const studentGroups = getGroups().filter(g => g.studentIds.includes(studentId)).map(g => g.id);
-    return getQuizzes().filter(q =>
-        q.assignedTo.includes(studentId) ||
-        (q.assignedGroups && q.assignedGroups.some(gid => studentGroups.includes(gid)))
-    );
+export async function getQuizzesForStudent(studentId: string): Promise<Quiz[]> {
+    const { data: groupData } = await supabase
+        .from('groups')
+        .select('id, student_ids');
+    const studentGroups = (groupData ?? [])
+        .filter((g: any) => (g.student_ids ?? []).includes(studentId))
+        .map((g: any) => g.id);
+
+    const { data } = await supabase.from('quizzes').select('*');
+    return (data ?? [])
+        .filter((q: any) =>
+            (q.assigned_to ?? []).includes(studentId) ||
+            (q.assigned_groups ?? []).some((gid: string) => studentGroups.includes(gid))
+        )
+        .map(mapQuiz);
 }
 
-export function addQuiz(quiz: Quiz): void {
-    const quizzes = getQuizzes();
-    quizzes.push(quiz);
-    write(KEYS.quizzes, quizzes);
+export async function addQuiz(quiz: Quiz): Promise<void> {
+    const { error } = await supabase.from('quizzes').insert({
+        id: quiz.id,
+        title: quiz.title,
+        description: quiz.description ?? null,
+        created_by: quiz.createdBy,
+        assigned_to: quiz.assignedTo,
+        assigned_groups: quiz.assignedGroups,
+        questions: quiz.questions,
+        time_limit_minutes: quiz.timeLimitMinutes ?? null,
+        scheduled_at: quiz.scheduledAt ?? null,
+        created_at: quiz.createdAt,
+    });
+    if (error) throw new Error(error.message);
 }
 
-export function updateQuiz(quiz: Quiz): void {
-    const quizzes = getQuizzes().map(q => q.id === quiz.id ? quiz : q);
-    write(KEYS.quizzes, quizzes);
+export async function updateQuiz(quiz: Quiz): Promise<void> {
+    await supabase.from('quizzes').update({
+        title: quiz.title,
+        description: quiz.description ?? null,
+        assigned_to: quiz.assignedTo,
+        assigned_groups: quiz.assignedGroups,
+        questions: quiz.questions,
+        time_limit_minutes: quiz.timeLimitMinutes ?? null,
+        scheduled_at: quiz.scheduledAt ?? null,
+    }).eq('id', quiz.id);
 }
 
-export function deleteQuiz(id: string): void {
-    const quizzes = getQuizzes().filter(q => q.id !== id);
-    write(KEYS.quizzes, quizzes);
-    const results = getResults().filter(r => r.quizId !== id);
-    write(KEYS.results, results);
+export async function deleteQuiz(id: string): Promise<void> {
+    await supabase.from('quizzes').delete().eq('id', id);
+    await supabase.from('student_results').delete().eq('quiz_id', id);
 }
 
 // ─── Results ─────────────────────────────────────────────
 
-export function getResults(): StudentResult[] {
-    return read<StudentResult>(KEYS.results);
+export async function getResults(): Promise<StudentResult[]> {
+    const { data, error } = await supabase.from('student_results').select('*');
+    if (error) return [];
+    return (data ?? []).map(mapResult);
 }
 
-export function getResultsByStudent(studentId: string): StudentResult[] {
-    return getResults().filter(r => r.studentId === studentId);
+export async function getResultsByStudent(studentId: string): Promise<StudentResult[]> {
+    const { data } = await supabase.from('student_results').select('*').eq('student_id', studentId);
+    return (data ?? []).map(mapResult);
 }
 
-export function getResultsByQuiz(quizId: string): StudentResult[] {
-    return getResults().filter(r => r.quizId === quizId);
+export async function getResultsByQuiz(quizId: string): Promise<StudentResult[]> {
+    const { data } = await supabase.from('student_results').select('*').eq('quiz_id', quizId);
+    return (data ?? []).map(mapResult);
 }
 
-export function addResult(result: StudentResult): void {
-    const results = getResults();
-    results.push(result);
-    write(KEYS.results, results);
+export async function addResult(result: StudentResult): Promise<void> {
+    await supabase.from('student_results').insert({
+        id: result.id,
+        student_id: result.studentId,
+        quiz_id: result.quizId,
+        answers: result.answers,
+        score: result.score,
+        max_score: result.maxScore,
+        completed_at: result.completedAt,
+        snapshots: result.snapshots ?? [],
+    });
 }
 
-export function hasStudentCompletedQuiz(studentId: string, quizId: string): boolean {
-    return getResults().some(r => r.studentId === studentId && r.quizId === quizId);
+export async function hasStudentCompletedQuiz(studentId: string, quizId: string): Promise<boolean> {
+    const { data } = await supabase
+        .from('student_results')
+        .select('id')
+        .eq('student_id', studentId)
+        .eq('quiz_id', quizId)
+        .limit(1);
+    return (data ?? []).length > 0;
 }
 
-// ─── Live Streams (Simulated) ────────────────────────────
+// ─── Live Streams ────────────────────────────────────────
 
-export function getLiveStreams(): import('./types').LiveStreamFeed[] {
-    return read<import('./types').LiveStreamFeed>(KEYS.live_streams);
+export async function getLiveStreams(): Promise<import('./types').LiveStreamFeed[]> {
+    const cutoff = Date.now() - 120_000;
+    const { data } = await supabase
+        .from('live_streams')
+        .select('*')
+        .gt('timestamp', cutoff);
+    return (data ?? []).map((s: any) => ({
+        studentId: s.student_id,
+        quizId: s.quiz_id,
+        snapshot: s.snapshot,
+        timestamp: s.timestamp,
+        faceDetected: s.face_detected,
+    }));
 }
 
-export function updateLiveStream(feed: import('./types').LiveStreamFeed): void {
-    const streams = getLiveStreams();
-    const existingIndex = streams.findIndex(s => s.studentId === feed.studentId);
-    if (existingIndex >= 0) {
-        streams[existingIndex] = feed;
-    } else {
-        streams.push(feed);
-    }
+export async function updateLiveStream(feed: import('./types').LiveStreamFeed): Promise<void> {
+    await supabase.from('live_streams').upsert({
+        student_id: feed.studentId,
+        quiz_id: feed.quizId,
+        snapshot: feed.snapshot,
+        timestamp: feed.timestamp,
+        face_detected: feed.faceDetected ?? null,
+    }, { onConflict: 'student_id' });
 
-    // Cleanup old streams (older than 2 minutes)
-    const activeStreams = streams.filter(s => Date.now() - s.timestamp < 120_000);
-    write(KEYS.live_streams, activeStreams);
+    // Cleanup stale
+    const cutoff = Date.now() - 120_000;
+    await supabase.from('live_streams').delete().lt('timestamp', cutoff);
 }
 
-export function removeLiveStream(studentId: string): void {
-    const streams = getLiveStreams().filter(s => s.studentId !== studentId);
-    write(KEYS.live_streams, streams);
+export async function removeLiveStream(studentId: string): Promise<void> {
+    await supabase.from('live_streams').delete().eq('student_id', studentId);
 }

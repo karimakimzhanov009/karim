@@ -12,24 +12,45 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onStartQuiz }) => {
     const { user, logout } = useAuth();
     const [quizzes, setQuizzes] = useState<Quiz[]>([]);
     const [results, setResults] = useState<StudentResult[]>([]);
+    const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+    const [quizMap, setQuizMap] = useState<Record<string, Quiz>>({});
     const [tab, setTab] = useState<'available' | 'completed'>('available');
     const [now, setNow] = useState(new Date());
 
-    const refresh = () => {
-        setQuizzes(getQuizzesForStudent(user!.id));
-        setResults(getResultsByStudent(user!.id));
+    const refresh = async () => {
+        const qs = await getQuizzesForStudent(user!.id);
+        const rs = await getResultsByStudent(user!.id);
+
+        // Build completed set
+        const completed = new Set<string>();
+        for (const q of qs) {
+            const done = await hasStudentCompletedQuiz(user!.id, q.id);
+            if (done) completed.add(q.id);
+        }
+
+        // Build quiz map for completed view
+        const map: Record<string, Quiz> = {};
+        for (const r of rs) {
+            const q = await getQuizById(r.quizId);
+            if (q) map[r.quizId] = q;
+        }
+
+        setQuizzes(qs);
+        setResults(rs);
+        setCompletedIds(completed);
+        setQuizMap(map);
     };
 
-    useEffect(() => { 
-        refresh(); 
-        const timer = setInterval(() => setNow(new Date()), 1000); // Check every second
+    useEffect(() => {
+        refresh();
+        const timer = setInterval(() => setNow(new Date()), 1000);
         return () => clearInterval(timer);
     }, []);
 
-    const availableQuizzes = quizzes.filter(q => !hasStudentCompletedQuiz(user!.id, q.id));
+    const availableQuizzes = quizzes.filter(q => !completedIds.has(q.id));
     const completedQuizzes = results.map(r => ({
         result: r,
-        quiz: getQuizById(r.quizId),
+        quiz: quizMap[r.quizId],
     })).filter(x => x.quiz);
 
     return (
@@ -86,7 +107,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onStartQuiz }) => {
                             {availableQuizzes.map(q => {
                                 const scheduledTime = q.scheduledAt ? new Date(q.scheduledAt) : null;
                                 const isLocked = scheduledTime ? now < scheduledTime : false;
-                                
+
                                 return (
                                     <div key={q.id} className={`quiz-card quiz-card-student ${isLocked ? 'quiz-card-locked' : ''}`}>
                                         <div className="quiz-card-top">
@@ -107,14 +128,14 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onStartQuiz }) => {
                                                 <>
                                                     <span>·</span>
                                                     <span className={isLocked ? 'text-primary' : ''}>
-                                                        <Calendar size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} /> 
+                                                        <Calendar size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '4px' }} />
                                                         {scheduledTime.toLocaleDateString('ru-RU')} в {scheduledTime.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
                                                     </span>
                                                 </>
                                             )}
                                         </div>
-                                        <button 
-                                            className={`btn btn-full ${isLocked ? 'btn-ghost' : 'btn-primary'}`} 
+                                        <button
+                                            className={`btn btn-full ${isLocked ? 'btn-ghost' : 'btn-primary'}`}
                                             onClick={() => !isLocked && onStartQuiz(q)}
                                             disabled={isLocked}
                                         >

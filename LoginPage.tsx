@@ -18,12 +18,9 @@ const LoginPage: React.FC = () => {
             return;
         }
         setIsLoading(true);
-        // Simulate small delay for feel
-        setTimeout(() => {
-            const err = login(username.trim(), password);
-            if (err) setError(err);
-            setIsLoading(false);
-        }, 400);
+        const err = await login(username.trim(), password);
+        if (err) setError(err);
+        setIsLoading(false);
     };
 
     return (

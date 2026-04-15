@@ -9,8 +9,17 @@ import DeputyDashboard from './DeputyDashboard';
 import QuizRunner from './QuizRunner';
 
 const AppContent: React.FC = () => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', flexDirection: 'column', gap: 16, background: 'var(--bg-page)' }}>
+        <div className="spinner" />
+        <p style={{ color: 'var(--text-muted)' }}>Инициализация...</p>
+      </div>
+    );
+  }
 
   if (!user) return <LoginPage />;
 

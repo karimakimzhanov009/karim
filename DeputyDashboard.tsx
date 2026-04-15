@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { User, Quiz, StudentResult, LiveStreamFeed } from './types';
-import { getTeachers, getUsers, getQuizzes, getResults, getUserById, getLiveStreams, getQuizById } from './db';
-import { LogOut, Users, BookOpen, BarChart3, ShieldCheck, GraduationCap, Clock, Award, Video, X } from 'lucide-react';
+import { getUsers, getQuizzes, getResults, getLiveStreams } from './db';
+import { LogOut, Users, BookOpen, BarChart3, ShieldCheck, GraduationCap, Video } from 'lucide-react';
 
 type DeputyTab = 'teachers' | 'students' | 'exams' | 'live';
 
@@ -15,13 +15,18 @@ const DeputyDashboard: React.FC = () => {
     const [allResults, setAllResults] = useState<StudentResult[]>([]);
     const [stats, setStats] = useState({ teachers: 0, students: 0, quizzes: 0, avgScore: 0 });
     const [liveFeeds, setLiveFeeds] = useState<LiveStreamFeed[]>([]);
+    const [userMap, setUserMap] = useState<Record<string, User>>({});
 
-    const refresh = () => {
-        const users = getUsers();
-        const quizzes = getQuizzes();
-        const results = getResults();
+    const refresh = async () => {
+        const users = await getUsers();
+        const quizzes = await getQuizzes();
+        const results = await getResults();
         const teachersList = users.filter(u => u.role === 'teacher');
         const studentsList = users.filter(u => u.role === 'student');
+
+        const map: Record<string, User> = {};
+        users.forEach(u => { map[u.id] = u; });
+        setUserMap(map);
 
         setTeachers(teachersList);
         setAllStudents(studentsList);
@@ -37,24 +42,30 @@ const DeputyDashboard: React.FC = () => {
             quizzes: quizzes.length,
             avgScore: avg,
         });
-        setLiveFeeds(getLiveStreams());
     };
 
-    useEffect(() => { 
-        refresh(); 
-        const interval = setInterval(() => {
-            setLiveFeeds(getLiveStreams());
-        }, 5000);
+    const fetchLive = async () => {
+        const feeds = await getLiveStreams();
+        setLiveFeeds(feeds);
+    };
+
+    useEffect(() => {
+        refresh();
+        fetchLive();
+        const interval = setInterval(fetchLive, 5000);
         return () => clearInterval(interval);
     }, []);
 
     const getTeacherName = (id?: string) => {
         if (!id) return '—';
-        const t = getUserById(id);
-        return t ? t.fullName : '—';
+        return userMap[id]?.fullName || '—';
     };
 
     const getResultsCount = (quizId: string) => allResults.filter(r => r.quizId === quizId).length;
+
+    // Build a quiz map for live feeds
+    const quizMap: Record<string, Quiz> = {};
+    allQuizzes.forEach(q => { quizMap[q.id] = q; });
 
     return (
         <div className="dashboard">
@@ -121,7 +132,6 @@ const DeputyDashboard: React.FC = () => {
                     <div className="section-header">
                         <h2 className="section-title">Все учителя ({teachers.length})</h2>
                     </div>
-
                     {teachers.length === 0 ? (
                         <div className="empty-state">
                             <Users size={48} className="empty-icon" />
@@ -157,7 +167,6 @@ const DeputyDashboard: React.FC = () => {
                     <div className="section-header">
                         <h2 className="section-title">Все ученики ({allStudents.length})</h2>
                     </div>
-
                     {allStudents.length === 0 ? (
                         <div className="empty-state">
                             <GraduationCap size={48} className="empty-icon" />
@@ -197,7 +206,6 @@ const DeputyDashboard: React.FC = () => {
                     <div className="section-header">
                         <h2 className="section-title">Все экзамены ({allQuizzes.length})</h2>
                     </div>
-
                     {allQuizzes.length === 0 ? (
                         <div className="empty-state">
                             <BookOpen size={48} className="empty-icon" />
@@ -211,14 +219,11 @@ const DeputyDashboard: React.FC = () => {
                                 const avgScore = quizResults.length > 0
                                     ? Math.round(quizResults.reduce((acc, r) => acc + (r.score / r.maxScore) * 100, 0) / quizResults.length)
                                     : null;
-
                                 return (
                                     <div key={q.id} style={{ padding: '20px', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', background: 'var(--bg-card)' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                                            <div>
-                                                <h3 style={{ fontSize: '16px', fontWeight: 700 }}>{q.title}</h3>
-                                                {q.description && <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '4px' }}>{q.description}</p>}
-                                            </div>
+                                        <div style={{ marginBottom: '12px' }}>
+                                            <h3 style={{ fontSize: '16px', fontWeight: 700 }}>{q.title}</h3>
+                                            {q.description && <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '4px' }}>{q.description}</p>}
                                         </div>
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>
                                             <div><strong>Учитель:</strong> {getTeacherName(q.createdBy)}</div>
@@ -249,8 +254,8 @@ const DeputyDashboard: React.FC = () => {
                     ) : (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
                             {liveFeeds.map(feed => {
-                                const student = getUserById(feed.studentId);
-                                const quiz = getQuizById(feed.quizId);
+                                const student = userMap[feed.studentId];
+                                const quiz = quizMap[feed.quizId];
                                 return (
                                     <div key={feed.studentId} style={{ background: '#000', borderRadius: '12px', overflow: 'hidden', position: 'relative', border: '2px solid var(--border-color)' }}>
                                         <img src={feed.snapshot} alt="Live Feed" style={{ width: '100%', aspectRatio: '4/3', objectFit: 'cover', display: 'block' }} />
